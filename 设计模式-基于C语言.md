@@ -77,3 +77,59 @@ CHAR * String_Alloc_Max_for(enum Module mod)
 }
 ```
 * 小节：工厂方法就是在代码中建立这样一个方法集：它能为我们按需分配内存，用户无需为得到这些内存记忆具体的细节，工厂生产方法的变化对上层用户透明。
+#### 创建型：原型模式
+* OO描述：用原型实例指定创建对象的种类，并且通过拷贝这些原型创建新的对象。
+* 工厂模式是一种从无到有创建产品的方法。但有的时候，依照已经存在的产品实体来创建更加方便，这就是原型模式。
+> 案例1：对于macvlan协议，经常要向vlan内的端口广播一个报文，重新创建报文开销太大，因此linux kernel的网络子系统是这样处理的。
+```c
+static void macvlan_broadcast(struct sk_buff *skb, 
+                              const struct macvlan_port *port,
+                              struct net_device *src,
+                              enum macvlan_mode mode)
+{
+    const struct ethhdr *eth = eth_hdr(skb);
+    const struct macvlan_dev *vlan;
+    struct hlist_node *n;
+    struct sk_buff *nskb;
+    unsigned int i;
+    int err;
+
+    if (skb->protocol == htons(ETH_P_PAUSE))
+        return;
+
+    for (i = 0; i < MACVLAN_HASH_SIZE; i++) {
+        hlist_for_each_entry_rcu(vlan, n, &port->vlan_hash[i], hlist) {
+            if (vlan->dev == src || !(vlan->mode & mode))
+                continue;
+
+            nskb = skb_clone(skb, GFP_ATOMIC);  /* 复制一份报文 */
+            err = macvlan_broadcast_one(nskb, vlan, eth,
+                                        mode == MACVLAN_MODE_BRIDGE);
+            macvlan_count_rx(vlan, skb->len + ETH_HLEN,
+                             err == NET_RX_SUCCESS, 1);
+        }
+    }
+}
+```
+> 案例2：在VOIP_SendSctpData()中，调用VOS_CopySocket()复制socket，避免了再次创建。
+```c
+{
+    /* 拷贝Socket */
+    vsSctpSocket = VSP_CopySocket(g_ulSctpTaskID, 
+                                  ulCurrentTaskID,                          
+                                  g_vsSctpRawSocket,        
+                                  VOS_NULL);
+    if ((VOS_NULL_LONG == vsSctpSocket) || 
+            (VOS_NULL == vsSctpSocket))
+    {
+        /* 使用VPRODUCT的打印函数，与接收打印保持一致 */
+        VPRODUCT_DotPrintf(IAS_VPRODUCT_MAJ_PLT_BUTT, 
+                           VPRODUCT_SOCKET_INFO,
+                           "VOIP_SendSctpData::拷贝Socket失败!");
+        VOS_RECORD_ERROR(vsSctpSocket);
+        return VOS_ERR;
+    }
+    ucIfCloseSock = TRUE;
+}
+```
+* 小节：原型模式看起来也是一种工厂，但它是仿造而不是原创；当克隆一个对象比重新创建更方便的时候，使用原型模式。
